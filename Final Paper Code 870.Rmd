@@ -243,5 +243,7 @@ group_raster<- predict(cdl_MICH_SA_masked, model_2, type="response")
 plot(group_raster,col= heat.colors(8, rev=TRUE))
 scalebar(50000, type="bar", divs = 2, label = c(0,25,50),below="km")
 
+#git test
+
 ```
 
