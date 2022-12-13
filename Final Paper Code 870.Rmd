@@ -1,0 +1,247 @@
+---
+title: "Final Paper Code"
+author: "Jack Magee"
+date: "2022-12-01"
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Required packages
+```{r}
+#install.packages("MASS")
+#install.packages("CAR")
+#install.packages("ggplot2")
+#install.packages("pacman")
+```
+
+
+```{r}
+#read in the data (Level 0) from GitHub
+deer_data <- read.csv('https://raw.githubusercontent.com/mageejac/Eco-870-Final/main/DBS_2022_raw.csv')
+```
+
+Data Cleaning (Level 1 data)
+```{r}
+
+#remove duplicated observations of the same group
+deer_data_2 <- deer_data[!duplicated(deer_data$Group.GID), ]
+
+#subset the data for group size, habitat, and location
+
+deer_data_3 <- deer_data_2[,c("habitat_group","total_deer_group","obs.x","obs.y")]
+
+#remove observations with unknown habitat type
+
+deer_data_4 <- deer_data_3[!(deer_data_3$habitat_group=="unk" | deer_data_3$habitat_group=="tilled_unk"),]
+
+# plot data distribution to choose distribution 
+hist(deer_data_4$total_deer_group)
+
+#choose negative binomial distribution because of large difference between variance and mean and over dispersion of the data
+mean(deer_data_4$total_deer_group)
+var(deer_data_4$total_deer_group)
+
+
+
+```
+Modeling the data
+```{r}
+#load packages
+
+library(MASS)
+library(car)
+
+#relevel data with Developed/Open Space habitat types as a control
+
+deer_data_4$habitat_group = as.factor(deer_data_4$habitat_group)
+deer_data_4$habitat_group_ref <- relevel(deer_data_4$habitat_group, ref = "Developed/Open_Space")
+
+# create glm
+model_1 <- glm.nb(total_deer_group ~ habitat_group_ref, data = deer_data_4)
+
+```
+
+```{r}
+#generating summary statistics 
+
+boxplot(total_deer_group ~ habitat_group_ref, data = deer_data_4,
+        main = "Deer Group Size by Habitat",
+        xlab = "Habitat Type",
+        ylab = "Group Size"
+)
+
+Anova(model_1)
+
+summary(model_1)
+
+```
+
+```{r, warnings=false}
+#set up CropScapeR
+
+#URL for CropScapeR package: https://tmieno2.github.io/R-as-GIS-for-Economists/CropScapeR.html
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(
+  stars, # spatiotemporal data handling
+  terra, # raster data handling
+  raster, # raster data handling
+  sf, # vector data handling
+  dplyr, # data wrangling
+  stringr, # string manipulation
+  lubridate, # dates handling
+  data.table, # data wrangling
+  tidyr, # reshape
+  tidyUSDA, # download USDA NASS data
+  keyring, # API key management
+  FedData, # download Daymet data
+  daymetr, # download Daymet data
+  ggplot2, # make maps
+  tmap, # make maps
+  future.apply, # parallel processing
+  CropScapeR, # download CDL data
+  prism, # download PRISM data
+  exactextractr # extract raster values to sf
+)  
+
+#set up map themes
+
+theme_set(theme_bw())
+
+theme_for_map <- theme(
+  axis.ticks = element_blank(),
+  axis.text= element_blank(), 
+  axis.line = element_blank(),
+  panel.border = element_blank(),
+  panel.grid.major = element_line(color='transparent'),
+  panel.grid.minor = element_line(color='transparent'),
+  panel.background = element_blank(),
+  plot.background = element_rect(fill = "transparent",color='transparent')
+)  
+
+#load/ install packages
+
+library(CropScapeR)
+library(devtools)
+devtools::install_github("cbw1243/CropScapeR")
+library(CropScapeR)
+library(ggplot2)
+library(tidyverse)
+
+
+#Generate study area map and extent
+
+Study_Area <- tigris::counties(state = "MI", cb = TRUE) %>% 
+  st_as_sf() %>% 
+  filter(NAME %in% c("Ionia", "Clinton", "Eaton", "Ingham", "Shiawassee")) 
+MICH_county <- tigris::counties("Michigan", cb = TRUE)
+ggplot() +
+  geom_sf(data = MICH_county) +
+  geom_sf(data =Study_Area, fill = "lightblue") +
+  theme_void()+
+  ggspatial::annotation_scale(
+    location = "bl",
+    bar_cols = c("grey60", "white")) +
+  ggspatial::annotation_north_arrow(location = "tr", which_north = "true")
+
+
+#pull in USDA crop cover data for study area
+
+(
+  cdl_MICH_SA <- GetCDLData(
+    aoi = Study_Area, 
+    year = "2021", 
+    type = "b",
+  )
+)
+
+
+#look up projections
+
+#terra::crs(Study_Area)
+#terra::crs(cdl_MICH_SA)
+
+
+#clip crop cover data to study area
+
+cdl_MICH_SA_masked <- Study_Area %>% 
+  #--- change the CRS first to that of the raster data ---#
+  st_transform(., projection(cdl_MICH_SA)) %>% 
+  #--- mask the values outside the sf (turn them into NA) ---#
+  raster::mask(cdl_MICH_SA, .)
+
+#plot Crop cover data for the study area
+
+plot(cdl_MICH_SA_masked)
+
+
+
+```
+
+
+```{r}
+data("linkdata")
+
+#pull in crop codes for USDA crop layer data
+
+crop_codes <- read.csv("https://raw.githubusercontent.com/mageejac/Eco-870-Final/main/cdl_codes_names.csv")
+
+head(crop_codes)
+
+# merge with data set
+
+colnames(crop_codes)[which(names(crop_codes) == "Crop")] <- "habitat_group_ref"
+
+deer_data_5 <- merge(crop_codes, deer_data_4, by ='habitat_group_ref')
+
+colnames(deer_data_5)[which(names(deer_data_5) == "MasterCat")] <- "value"
+
+deer_data_5$value <- as.factor(deer_data_5$value)
+
+deer_data_5$value <- relevel(deer_data_5$value, ref = "121")
+```
+
+```{r}
+#generate second model to predict congregations across the landscape with crop code value
+
+model_2 <- glm.nb(total_deer_group ~ value, data = deer_data_5)
+
+summary(model_2)
+
+boxplot(total_deer_group ~ value, data = deer_data_5)
+```
+
+
+```{r}
+# fitting predicted group values to raster
+
+values_crop <-data.frame(value= c("121","1","5","24","36","61","63","64","152"))
+
+p1<-predict(model_2, newdata=values_crop, se.fit=TRUE, type='response')
+
+py2<- expand.grid(values_crop)
+p2<-predict(model_2, newdata=py2, se.fit=TRUE, type='response')
+predicted_group_size <- data.frame(py2, p2)
+
+predicted_group_size
+
+```
+
+```{r}
+#plotting new raster
+
+names(cdl_MICH_SA_masked) = "value"
+
+group_raster<- predict(cdl_MICH_SA_masked, model_2, type="response")
+
+plot(group_raster,col= heat.colors(8, rev=TRUE))
+scalebar(50000, type="bar", divs = 2, label = c(0,25,50),below="km")
+
+```
+
