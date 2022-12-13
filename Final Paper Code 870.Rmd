@@ -3,8 +3,8 @@ title: "Final Paper Code"
 author: "Jack Magee"
 date: "2022-12-01"
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
 editor_options:
   chunk_output_type: console
 ---
@@ -178,10 +178,10 @@ cdl_MICH_SA_masked <- Study_Area %>%
 
 #plot Crop cover data for the study area
 
-plot(cdl_MICH_SA_masked)
-
-
-
+plot(cdl_MICH_SA_masked,
+     legend.args=list(text='Cover Type', side=4, font=2, line=2.5, cex=0.8))
+scalebar(50000, type="bar", divs = 2, label = c(0,25,50),below="km")
+north("topleft", angle = 350)
 ```
 
 
@@ -234,16 +234,17 @@ predicted_group_size
 ```
 
 ```{r}
-#plotting new raster
+#plotting new raster with predicted values
 
 names(cdl_MICH_SA_masked) = "value"
 
 group_raster<- predict(cdl_MICH_SA_masked, model_2, type="response")
 
-plot(group_raster,col= heat.colors(8, rev=TRUE))
+plot(group_raster,
+     col= heat.colors(8, rev=TRUE),
+     legend.args=list(text='Group Size', side=4, font=2, line=2.5, cex=0.8))
 scalebar(50000, type="bar", divs = 2, label = c(0,25,50),below="km")
-
-#git test
+north("topleft", angle = 350)
 
 ```
 
